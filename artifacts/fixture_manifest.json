@@ -1,0 +1,30 @@
+﻿[
+    {
+        "file":  "README.md",
+        "sha256":  "dd728d3bddea664b4861a196624ae3cb9dda397dcea68539b94fe7ad51b6fb4e"
+    },
+    {
+        "file":  "START_HERE.txt",
+        "sha256":  "e8865c5832d61e47e1692c00a63f2c4e247decbb373b9181e039e90ace0bff12"
+    },
+    {
+        "file":  "fixtures.json",
+        "sha256":  "cef8df6ace2f4f8fa7d359e0155bc5b260daefde2266a0a7d6b67587528843d8"
+    },
+    {
+        "file":  "eval_scenarios.json",
+        "sha256":  "724b096fe949b2555698da89c306ec73d968e6f29ee50f9a90f7cbff4bd0b4f5"
+    },
+    {
+        "file":  "server.py",
+        "sha256":  "4d31e6da04415b8db54d1eb70fc5a98ee49ef3a40a80dea2491b6ea8460b8f62"
+    },
+    {
+        "file":  "mcp_server.py",
+        "sha256":  "1f99f6422cee7e4f09160d00d9da01a6cf11ef465530ee3d36874eb5b307d0a9"
+    },
+    {
+        "file":  "test_mock_api.py",
+        "sha256":  "3091475c551d5e7f47b816ec3ef6724c845a47092cc1eb699f5872bea8c971a0"
+    }
+]

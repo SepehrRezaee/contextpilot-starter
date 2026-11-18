@@ -1,0 +1,14 @@
+{
+  "body_hash": "68a7914324dc0409653b772edcbc3545538ed73f4d4c6b9a491e5624ac75b500",
+  "action_status": "COMMITTED",
+  "investigation_trace": "f1005d3a-3f8d-48a9-823a-070fceec357c",
+  "citations": [
+    "N-POL-REFUND-2026",
+    "N-POL-BILL-2026"
+  ],
+  "forgotten_preferences": 0,
+  "action_id": "f3244e3d-c2fc-49e6-94a8-3e4d5dd796de",
+  "comments": 1,
+  "production_cli": "uvicorn assistant.api:create_app --factory",
+  "trace_count": 10
+}

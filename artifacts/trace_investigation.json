@@ -1,0 +1,96 @@
+{
+  "trace_id": "8e940934-571e-45b7-9111-6122ab517dc8",
+  "tenant_id": "northstar",
+  "user_id": "reviewer-01",
+  "session_id": "eval",
+  "started_at": "2026-11-16T19:13:32.698112+00:00",
+  "intent": "investigate",
+  "model_adapter": "deterministic",
+  "outcome": "ok",
+  "selected_document_ids": [
+    "N-POL-REFUND-2026",
+    "N-POL-BILL-2026"
+  ],
+  "duration_ms": 1312.0,
+  "events": [
+    {
+      "stage": "intent",
+      "elapsed_ms": 0.0,
+      "name": "investigate"
+    },
+    {
+      "stage": "mcp.attempt",
+      "elapsed_ms": 0.0,
+      "attempt": 1
+    },
+    {
+      "stage": "mcp.initialize",
+      "elapsed_ms": 1125.0,
+      "transport": "stdio"
+    },
+    {
+      "stage": "mcp.tools/call",
+      "elapsed_ms": 1125.0,
+      "transport": "stdio",
+      "tool": "get_ticket",
+      "ticket_id": "NS-104"
+    },
+    {
+      "stage": "mcp.validated",
+      "elapsed_ms": 1265.0,
+      "ticket_id": "NS-104",
+      "version": 1
+    },
+    {
+      "stage": "http.read",
+      "elapsed_ms": 1312.0,
+      "resource": "documents",
+      "status": 200,
+      "attempt": 1
+    },
+    {
+      "stage": "retrieval.select",
+      "elapsed_ms": 1312.0,
+      "encountered_ids": [
+        "GLOBAL-001",
+        "N-POL-REFUND-2024",
+        "N-POL-REFUND-2026",
+        "N-POL-BILL-2026",
+        "N-POL-CANCEL-2026",
+        "N-OPS-NOTE-2026"
+      ],
+      "selected_ids": [
+        "N-POL-REFUND-2026",
+        "N-POL-BILL-2026"
+      ],
+      "ranking": [
+        {
+          "id": "N-POL-REFUND-2026",
+          "topic": "refund",
+          "lexical_score": 23,
+          "authority": "tenant",
+          "effective_at": "2026-03-15"
+        },
+        {
+          "id": "N-POL-BILL-2026",
+          "topic": "billing",
+          "lexical_score": 13,
+          "authority": "tenant",
+          "effective_at": "2026-05-01"
+        }
+      ],
+      "issues": []
+    },
+    {
+      "stage": "memory.read",
+      "elapsed_ms": 1312.0,
+      "keys": []
+    },
+    {
+      "stage": "model.render",
+      "elapsed_ms": 1312.0,
+      "mode": "deterministic",
+      "assessment": "verification_required"
+    }
+  ]
+}

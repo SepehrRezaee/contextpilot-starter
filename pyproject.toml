@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools==80.9.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "contextpilot-assistant"
+version = "0.1.0"
+description = "Offline, MCP-backed support assistant with explicit approval"
+requires-python = ">=3.11"
+dependencies = [
+  "mcp==1.26.0",
+  "fastapi==0.133.1",
+  "pydantic==2.13.4",
+  "httpx==0.28.1",
+  "uvicorn==0.41.0",
+  "anyio==4.12.1",
+]
+
+[project.optional-dependencies]
+test = ["pytest==8.3.5"]
+
+[tool.setuptools.packages.find]
+include = ["assistant*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "test_mock_api.py"]
+# Avoid reusing an owner-only cache created by a different Windows account.
+addopts = "-ra -p no:cacheprovider"
+

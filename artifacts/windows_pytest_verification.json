@@ -1,0 +1,18 @@
+{
+  "command": ".\\.venv\\Scripts\\python.exe -m pytest -q --tb=short",
+  "windows_account": "desktop-h8p4h6b\\codeeater",
+  "exit_code": 0,
+  "passed": 57,
+  "failed": 0,
+  "errors": 0,
+  "skipped": 0,
+  "warnings": 0,
+  "duration_seconds": 82.27,
+  "actual_summary": "57 passed in 82.27s (0:01:22)",
+  "regressions": [
+    "inaccessible shared pytest-of-user bucket from a previous account",
+    "unusable persistent .pytest_cache with warnings treated as errors"
+  ],
+  "before_fix": "The reported PermissionError and cache warnings were reproduced under CodeEater before changing the harness.",
+  "scope": "Complete suite, including the supplied backend tests and real process/MCP E01-E08 evaluation."
+}

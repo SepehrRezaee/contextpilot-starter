@@ -1,0 +1,81 @@
+{
+  "trace_id": "70188a71-4b3a-45ad-92b9-1d9110195569",
+  "tenant_id": "northstar",
+  "user_id": "reviewer-01",
+  "session_id": "eval",
+  "started_at": "2026-11-16T19:13:52.928527+00:00",
+  "intent": "approve",
+  "model_adapter": "deterministic",
+  "outcome": "ok",
+  "selected_document_ids": [],
+  "duration_ms": 984.0,
+  "events": [
+    {
+      "stage": "action.transition",
+      "elapsed_ms": 0.0,
+      "action_id": "59c432f5-7257-4ed5-adab-75d9a57fe0af",
+      "previous": "PROPOSED",
+      "status": "APPROVED",
+      "approval_reference": "approval-205cec0af40648ea8553f2ba040c34b2"
+    },
+    {
+      "stage": "mcp.attempt",
+      "elapsed_ms": 0.0,
+      "attempt": 1
+    },
+    {
+      "stage": "mcp.initialize",
+      "elapsed_ms": 828.0,
+      "transport": "stdio"
+    },
+    {
+      "stage": "mcp.tools/call",
+      "elapsed_ms": 828.0,
+      "transport": "stdio",
+      "tool": "get_ticket",
+      "ticket_id": "NS-104"
+    },
+    {
+      "stage": "mcp.validated",
+      "elapsed_ms": 938.0,
+      "ticket_id": "NS-104",
+      "version": 1
+    },
+    {
+      "stage": "action.transition",
+      "elapsed_ms": 938.0,
+      "action_id": "59c432f5-7257-4ed5-adab-75d9a57fe0af",
+      "previous": "APPROVED",
+      "status": "SENDING",
+      "error_code": null
+    },
+    {
+      "stage": "http.publish",
+      "elapsed_ms": 969.0,
+      "status": 503,
+      "idempotency_key": "cp-77f2c7cadb9e47c19787fddda291629f"
+    },
+    {
+      "stage": "http.read",
+      "elapsed_ms": 984.0,
+      "resource": "action",
+      "status": 200,
+      "attempt": 1
+    },
+    {
+      "stage": "action.transition",
+      "elapsed_ms": 984.0,
+      "action_id": "59c432f5-7257-4ed5-adab-75d9a57fe0af",
+      "previous": "SENDING",
+      "status": "COMMITTED",
+      "error_code": null
+    },
+    {
+      "stage": "action.reconcile",
+      "elapsed_ms": 984.0,
+      "action_id": "59c432f5-7257-4ed5-adab-75d9a57fe0af",
+      "idempotency_key": "cp-77f2c7cadb9e47c19787fddda291629f",
+      "outcome": "committed"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+CONTEXT PILOT - FIVE-HOUR APPLIED AI ENGINEERING EXERCISE
+
+1. Read the candidate PDF before inspecting fixtures.
+2. Start local backend: python server.py --port 8765
+3. Run fixtures smoke tests: python -m unittest -v test_mock_api.py
+4. For the MCP tool, create venv and pip install 'mcp>=1.13,<3', then integrate the provided stdio MCP server with your assistant.
+5. Implement your assistant in a separate folder. Existing fixture code is infrastructure, not a submitted solution.
+6. Do not commit real API keys or personal customer data.
+
+Expected deliverables: working assistant API or CLI, tests/evals, brief decision log and run instructions. No production Kubernetes deployment or frontend UI required.
