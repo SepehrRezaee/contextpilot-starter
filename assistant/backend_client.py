@@ -22,7 +22,7 @@ def tenant_path(tenant: str) -> str:
 class HttpPool:
     """One pooled client for the backend, driven from worker threads.
 
-    Measured on Windows with scripts/benchmark.py: building an
+    Measured on Windows during development: building an
     ``httpx.AsyncClient`` per call cost ~17 ms, and even a pooled AsyncClient took
     ~10 ms per request and did not overlap concurrent requests on the proactor loop.
     A pooled sync client in a worker thread takes ~2 ms and scales with concurrency.

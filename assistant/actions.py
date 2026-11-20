@@ -33,7 +33,7 @@ from .storage import Store, timestamp
 from .tracing import Trace
 
 # Consent is recorded and the outcome is not yet confirmed.
-RESUMABLE = {"UNKNOWN", "APPROVED"}  # no worker owns them; APPROVED only exists in 0.1 databases
+RESUMABLE = {"UNKNOWN"}  # no worker owns it; only an explicit re-approval resumes it
 PENDING = RESUMABLE | {"SENDING"}
 UNCONSENTED = {"PROPOSED", "CONFLICT"}  # the only states that may lack an approval record
 IMMUTABLE = ("action_id", "tenant_id", "user_id", "ticket_id", "body", "body_hash",
@@ -43,7 +43,6 @@ NEXT_STEP = {
     "SENDING": "A publish attempt is recorded. Call reconcile to confirm its outcome.",
     "COMMITTED": "Published once and confirmed by the backend receipt. Nothing further is required.",
     "UNKNOWN": "Outcome unconfirmed. Call reconcile, or approve again to retry with the same idempotency key.",
-    "APPROVED": "Approved but never sent. Approve again to publish with the same idempotency key.",
     "CONFLICT": "The ticket changed or the draft expired. Request a new draft and review it again.",
     "FAILED": "The backend rejected this comment. Request a new draft.",
     "INVARIANT_VIOLATION": "The backend record does not match this proposal. Do not retry; investigate using the trace.",
@@ -79,7 +78,7 @@ class Actions:
                 body_hash TEXT NOT NULL, expected_version INTEGER NOT NULL CHECK(expected_version>0),
                 idempotency_key TEXT NOT NULL UNIQUE, created_at TEXT NOT NULL,
                 binding_hash TEXT NOT NULL, status TEXT NOT NULL CHECK(status IN
-                ('PROPOSED','APPROVED','SENDING','COMMITTED','CONFLICT','UNKNOWN','FAILED','INVARIANT_VIOLATION')),
+                ('PROPOSED','SENDING','COMMITTED','CONFLICT','UNKNOWN','FAILED','INVARIANT_VIOLATION')),
                 approval_reference TEXT, approved_at TEXT, attempts INTEGER NOT NULL DEFAULT 0,
                 error_code TEXT, receipt_json TEXT);
             CREATE TABLE IF NOT EXISTS approvals (

@@ -138,7 +138,25 @@ async def test_other_fixture_tickets_use_own_policy_and_real_calendar(backend, t
     assert result["evidence"]["assessment"] == "manual_escalation"
     assert result["proposed_action"]["ticket_id"] == ticket_id
     assert result["proposed_action"]["status"] == "PROPOSED"
+    assert citation not in result["proposed_action"]["body"]
+    assert "cannot confirm a refund" in result["proposed_action"]["body"]
     assert backend.get(f"/v1/tenants/{tenant}/tickets/{ticket_id}").json()["comments"] == []
+
+
+@pytest.mark.anyio
+async def test_draft_body_is_customer_facing_while_citations_stay_in_the_response(backend, tmp_path):
+    app = make_app(backend, tmp_path)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://assistant") as client:
+        result = (await client.post("/assistant/respond", json={**CTX, "message": "Draft a response for NS-104"})).json()
+    body = result["proposed_action"]["body"]
+    assert set(result["citations"]) == {"N-POL-REFUND-2026", "N-POL-BILL-2026"}
+    assert {c["document_id"] for c in result["evidence"]["claims"]} == set(result["citations"])
+    assert "14 calendar days" in body and "prior credits" in body
+    # Internal IDs, operator instructions and hostile document text never reach the customer.
+    for internal in ("N-POL-", "N-OPS-", "Please verify:", "This assessment", "separate review", "send_comment"):
+        assert internal not in body
+    assert "before we can confirm a refund" in body.lower()
+    assert result["answer"] == body
 
 
 

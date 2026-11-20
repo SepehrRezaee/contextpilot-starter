@@ -136,7 +136,7 @@ def assess(ticket: Ticket | None, retrieval: Retrieval, today: date) -> Evidence
         if result.window_days is not None:
             condition = " No premium exports may have been used." if requires_exports else ""
             condition += " Enterprise plans are excluded." if excludes_enterprise else ""
-            result.claims.append({"document_id": refund.id,
+            result.claims.append({"document_id": refund.id, "topic": "refund",
                                   "text": f"The current refund policy has a window of {result.window_days} calendar days from the first payment.{condition} Verification is required before confirming a refund."})
         else:
             result.issues.append("unsupported_refund_policy_language")
@@ -144,13 +144,13 @@ def assess(ticket: Ticket | None, retrieval: Retrieval, today: date) -> Evidence
         kind = topic(document)
         text = document.text.lower()
         if kind == "billing" and all(word in text for word in ("purchase age", "premium-export", "prior credits")):
-            result.claims.append({"document_id": document.id,
+            result.claims.append({"document_id": document.id, "topic": kind,
                                   "text": "Billing verification requires purchase age, premium export usage and prior credits. Missing evidence requires clarification or escalation."})
         elif kind == "cancellation" and "stops future renewals" in text and "does not automatically authorize a refund" in text:
-            result.claims.append({"document_id": document.id,
+            result.claims.append({"document_id": document.id, "topic": kind,
                                   "text": "Cancellation stops future renewals and does not automatically authorize a refund. Subscription changes require explicit approval."})
         elif kind == "escalation" and "billing cases lacking verified records" in text:
-            result.claims.append({"document_id": document.id,
+            result.claims.append({"document_id": document.id, "topic": kind,
                                   "text": "Billing cases lacking verified records require escalation."})
     if ticket is None:
         result.assessment = "policy_only" if result.claims and not result.issues else "insufficient_evidence"

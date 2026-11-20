@@ -1,128 +1,128 @@
-# ContextPilot candidate solution
+# ContextPilot: candidate solution
 
-This candidate API investigates synthetic support tickets through **real SDK stdio MCP**, selects current tenant policy over HTTP, remembers explicit writing preferences in SQLite, and proposes customer replies. Only a separate owner approval for the exact stored draft can publish a comment. It runs completely offline after dependency installation; no model key is needed.
+ContextPilot is a local JSON API for support operators. It investigates a ticket through the **supplied stdio MCP server**, grounds refund answers in the tenant's current policy with document-ID citations, remembers explicit writing preferences across sessions and restarts, and drafts customer replies. A draft is published only after a **separate approval request bound to the exact stored body hash**. It runs offline and needs no model key.
 
-The seven root starter files are unchanged infrastructure. The root README documents the fixture; this README documents the candidate. `artifacts/fixture_manifest.json` records their original SHA-256 hashes. Candidate runtime code is in `assistant/`, tests in `tests/`, and design assumptions in `../DECISIONS.md`.
+## What is supplied and what is mine
+
+| Supplied fixture (unchanged) | Candidate implementation |
+|---|---|
+| `server.py`, `mcp_server.py`, `fixtures.json`, `eval_scenarios.json`, `test_mock_api.py`, root `README.md` (fixture docs), `START_HERE.txt` | `assistant/` (code), `tests/`, `artifacts/` (generated evidence), `DECISIONS.md`, `pyproject.toml`, `requirements.lock`, `.env.example` |
+
+`tests/test_scenarios.py` checks the seven supplied files against the SHA-256 hashes in `artifacts/fixture_manifest.json`. Candidate code never imports fixture modules.
+
+| Module | Responsibility |
+|---|---|
+| `api.py` | FastAPI endpoints; validates the trusted `tenant_id`/`user_id`/`session_id` context |
+| `orchestrator.py` | One bounded, deterministic workflow: scope check → forget/remember/recall → investigate/draft |
+| `mcp_client.py`, `lifecycle.py` | Official MCP SDK stdio client; one persistent session, bounded timeouts, one reconnect |
+| `backend_client.py` | Read-only document/action-status reader and the approval-only comment publisher |
+| `retrieval.py` | Metadata filtering, lexical ranking, bounded policy parsing, evidence assessment |
+| `memory.py`, `storage.py` | Strict preference/forget grammars; SQLite preferences and action ledger |
+| `actions.py` | Immutable proposals, hash-bound approval, idempotent publish and reconciliation |
+| `model_adapter.py` | `ModelAdapter` interface and the shipped deterministic renderer |
+| `tracing.py`, `eval_runner.py` | Redacted JSONL traces; E01–E08 evaluator |
 
 ## Setup
 
-Run from the workspace root, with Python 3.11+ (verified with 3.11.15). A clean environment needs package-index access once. Runtime versions: MCP **1.26.0**, FastAPI **0.133.1**, Pydantic **2.13.4**, HTTPX **0.28.1**, Uvicorn **0.41.0**, AnyIO **4.12.1**; tests use pytest **8.3.5**. All resolved transitive dependencies are pinned in `requirements.lock` (Windows-only dependencies have platform markers).
+Python 3.11+ (verified with 3.11.15). Pinned runtime: MCP SDK **1.26.0**, FastAPI **0.133.1**, Pydantic **2.13.4**, HTTPX **0.28.1**, Uvicorn **0.41.0**, AnyIO **4.12.1**; tests use pytest **8.3.5**. `requirements.lock` pins every transitive dependency. Run all commands from the repository root:
 
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.lock -e '.[test]'
 ```
 
-On macOS/Linux, replace `.\.venv\Scripts\python.exe` with `.venv/bin/python` in all commands. No fixture modules are imported by candidate code or candidate tests.
+On macOS/Linux, use `.venv/bin/python` instead of `.\.venv\Scripts\python.exe`.
 
-## Start the fixture and assistant
-
-In terminal 1:
+## Run
 
 ```powershell
+# Terminal 1: the supplied backend
 .\.venv\Scripts\python.exe server.py --port 8765
-```
 
-In terminal 2:
-
-```powershell
+# Terminal 2: the assistant (the date pin is optional; it reproduces the evaluation answers)
+$env:CONTEXTPILOT_TODAY = '2026-11-16'
 .\.venv\Scripts\python.exe -m uvicorn assistant.api:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-Open `http://127.0.0.1:8000/docs` for request schemas. Configuration is documented in `.env.example`; export the variables in the terminal (the file is not auto-loaded). Defaults resolve relative to the project root, including the supplied MCP script, SQLite DB and JSONL trace path. The assistant starts the supplied MCP server once with the same venv interpreter, initializes a genuine stdio session and reuses it for ticket reads; a session that breaks is reopened once. No HTTP ticket-read fallback exists.
+The assistant starts `mcp_server.py` with the same interpreter, initializes one stdio session and reuses it for every `get_ticket` call. There is no HTTP fallback for ticket reads. The variables in `.env.example` are read from the environment; the file itself is not loaded. When `CONTEXTPILOT_TODAY` is unset, policy dates use the current UTC date. Interactive schemas are at `http://127.0.0.1:8000/docs`.
 
-`/health` reports process readiness and adapter mode, not upstream availability. Default policy time is the current UTC date. Tests/evaluation inject **2026-11-16**, so the demo remains reproducible when the real date changes. To reproduce those date-dependent answers in the live API, set `$env:CONTEXTPILOT_TODAY = '2026-11-16'` before starting Uvicorn (demo/evaluation only; an invalid date fails at startup).
+Quick check without PowerShell:
 
-## Reviewer walkthrough (PowerShell)
+```sh
+curl -s -X POST http://127.0.0.1:8000/assistant/respond -H 'Content-Type: application/json' \
+  -d '{"tenant_id":"northstar","user_id":"reviewer-01","session_id":"s1","message":"Explain NS-104"}'
+```
 
-The following helper only sends individual explicit API requests. Inspect the returned draft before running the separate approval command.
+## Walkthrough (PowerShell)
 
 ```powershell
 $api = 'http://127.0.0.1:8000'
 $context = @{tenant_id='northstar'; user_id='reviewer-01'; session_id='review-a'}
 function Ask-Assistant([string]$message) {
-    $payload = $context.Clone()
-    $payload.message = $message
+    $payload = $context.Clone(); $payload.message = $message
     Invoke-RestMethod "$api/assistant/respond" -Method Post -ContentType 'application/json' -Body ($payload | ConvertTo-Json)
 }
 
-# 1. Real MCP investigation with current policy IDs and verification gaps.
+# 1. Investigation: real MCP get_ticket, current policy, citations, missing facts.
 Ask-Assistant 'Explain NS-104 and cite the current refund policy' | ConvertTo-Json -Depth 8
 
-# 2. Explicit preference; new session; independent format correction.
+# 2. Save, recall in a new session, then correct one preference.
 Ask-Assistant 'I prefer concise customer replies without unnecessary introductions.'
 $context.session_id = 'review-b'
 Ask-Assistant 'Please use bullet points instead of short paragraphs from now on.'
 Ask-Assistant 'What customer communication preferences do you remember?'
 Ask-Assistant 'Actually, use detailed replies from now on.'
 
-# 3. Draft: no customer comment is posted. Inspect the exact stored body/hash.
-$result = Ask-Assistant 'Draft a response for NS-104'
-$draft = $result.proposed_action
+# 3. Draft: stored as PROPOSED. Nothing is posted to the ticket.
+$draft = (Ask-Assistant 'Draft a response for NS-104').proposed_action
 $draft | ConvertTo-Json -Depth 8
-$query = 'tenant_id=northstar&user_id=reviewer-01&session_id=review-b'
-Invoke-RestMethod "$api/assistant/actions/$($draft.action_id)?$query"
+Invoke-RestMethod "$api/assistant/actions/$($draft.action_id)?tenant_id=northstar&user_id=reviewer-01&session_id=review-b"
 
-# 4. After reviewing that exact body, make a SEPARATE approval request.
-$approval = $context.Clone()
-$approval.body_hash = $draft.body_hash
+# 4. Separate, explicit approval of that exact body hash publishes it once.
+$approval = $context.Clone(); $approval.body_hash = $draft.body_hash
 Invoke-RestMethod "$api/assistant/actions/$($draft.action_id)/approve" -Method Post -ContentType 'application/json' -Body ($approval | ConvertTo-Json)
 
-# 5. Repeat the same approval or read-only reconciliation safely.
+# 5. Read-only reconciliation; repeating it (or the approval) never publishes again.
 Invoke-RestMethod "$api/assistant/actions/$($draft.action_id)/reconcile" -Method Post -ContentType 'application/json' -Body ($context | ConvertTo-Json)
 
-# 6. Forget, restart the assistant, then recall in a new session.
+# 6. Forget, then recall again (restart the assistant first to see that it persists).
 Invoke-RestMethod "$api/assistant/users/reviewer-01/memory/forget" -Method Post -ContentType 'application/json' -Body ($context | ConvertTo-Json)
-$context.session_id = 'review-c'
 Ask-Assistant 'What customer communication preferences do you remember?'
 ```
 
-You can also forget by saying `Forget my writing preferences.` (or `Delete my preferences.`); `Forget my format preferences.` deletes only that dimension, and a negated sentence such as `Do not forget my preferences.` deletes nothing. Memory inspection is `GET /assistant/users/{user_id}/memory` with the same three query context fields. Another user/tenant receives no action or memory record. Generic prose approval never publishes; the approval endpoint rejects altered hashes and arbitrary approval references.
+Saying `Forget my writing preferences.` also deletes everything, and `Forget my format preferences.` deletes one dimension. A negated sentence like `Do not forget my preferences.` deletes nothing. `GET /assistant/users/{user_id}/memory` lists stored preferences, given the same three context query parameters. The investigation answer is for the operator and puts a `[document ID]` after each claim. The draft body is customer wording without internal IDs; its citations are returned in `citations` and `evidence.claims`. Always check the returned action `status`: `CONFLICT`, `UNKNOWN` and `FAILED` are explicit outcomes even with HTTP 200.
 
-For a deterministic 503-after-commit walkthrough, run the evaluator below. E06 launches a **separate isolated evaluation API** with a bootstrap-only failure injector, obtains a draft, explicitly calls approval, checks the backend receipt, restarts the API, repeats approval and verifies one comment. E05 proves the draft-only case. The production API accepts no failure-control request field/header or environment switch. Focused action tests also demonstrate 503-before-commit and 409 races.
-
-## Reproduce validation and artifacts
+## Tests and evaluation
 
 ```powershell
-# Original supplied backend smoke suite (starts its own HTTP server).
-.\.venv\Scripts\python.exe -m unittest -v test_mock_api.py
-
-# All candidate tests AND the original 3 backend tests, including real MCP.
-.\.venv\Scripts\python.exe -m pytest -q
-
-# All eight official scenarios: starts/stops isolated fixture and API processes.
-.\.venv\Scripts\python.exe -m assistant.eval_runner
-
-# Focused failure/recovery demonstration.
-.\.venv\Scripts\python.exe -m pytest tests/test_actions.py -v
+.\.venv\Scripts\python.exe -m unittest -v test_mock_api.py   # supplied backend smoke tests
+.\.venv\Scripts\python.exe -m pytest -q                      # all candidate tests + supplied smoke tests + E01-E08
+.\.venv\Scripts\python.exe -m assistant.eval_runner          # E01-E08 only; rewrites artifacts/
+.\.venv\Scripts\python.exe -m pytest tests/test_actions.py -v  # approval, 503 before/after commit, 409, restart recovery
 ```
 
-Each pytest invocation creates a fresh workspace-local directory under `tmp/pytest-run-*`. This keeps the sandbox account's private pytest directories separate from a normal Windows terminal, even when both report the same username. Pytest's optional persistent cache is disabled by default to avoid reusing an inaccessible `.pytest_cache`. The normal test command above requires no permission changes or cleanup of another account's files. Cache-dependent options such as `--lf`, `--ff` and `--stepwise` require overriding the default with `-o addopts=-ra` and choosing a caller-writable `cache_dir`.
+The tests use real processes: a fixture HTTP server on a free port, the SDK stdio MCP server, and subprocess restarts. Nothing in the assistant path is mocked, except where a test injects a specific failure (an unavailable status reader, a crash after the POST, a racing writer, a timed-out write that commits later). The evaluator loads the supplied `eval_scenarios.json`. For each scenario it starts an isolated API process with its own database, resets the fixture, and checks independent state as well as the response: backend comment counts, SQLite rows, trace events and process restarts. E06 uses a bootstrap-only failure injector (503 after commit) that the normal API does not expose. The evaluator and the date-dependent tests pin the policy clock to **2026-11-16**, so results do not depend on the real date. `tests/test_pytest_portability.py` guards a Windows multi-account issue: each pytest run gets a fresh ignored `tmp/pytest-run-*` directory, and the cache provider is disabled.
 
-The evaluator loads the original `eval_scenarios.json`, dispatches E01–E08, resets the fixture between cases, uses separate databases, and reads sample preference sessions over HTTP. E02–E06 include actual API process restarts. It exits nonzero on any scenario failure and generates:
+## Evidence in `artifacts/` (regenerated by the evaluator)
 
-- `artifacts/eval_results.json`: per-scenario status, duration, failure reason and independent state evidence.
-- `artifacts/evaluation_traces.jsonl`: all evaluation requests, including tool stages, sources and state transitions.
-- `artifacts/trace_investigation.json`: one real investigation with current citations and stdio MCP evidence.
-- `artifacts/trace_503_recovery.json`: one real approval, 503, receipt reconciliation and COMMITTED transition.
+- `eval_results.json`: E01–E08 pass/fail, durations, failure reasons and the independent evidence checked.
+- `evaluation_traces.jsonl`: one redacted trace per evaluation request.
+- `trace_investigation.json`: sample trace of a ticket investigation (MCP initialize and `get_ticket`, document reads, selected IDs, latency).
+- `trace_503_recovery.json`: sample trace of approval → `SENDING` → HTTP 503 → reconciliation by the same idempotency key → `COMMITTED`.
 
-Temporary evaluation databases/logs remain under ignored `var/evaluation/`; tests use ignored `tmp/`. Production demo state uses `var/assistant.sqlite3` and `var/traces.jsonl`. Traces contain context IDs, document IDs, hashes, errors and monotonic durations, without prompts, ticket/customer bodies, or secrets.
+Each trace has `trace_id`, tenant/user/session IDs, intent, tool names, selected document IDs, action ID and state transitions, error codes, per-stage `elapsed_ms` and `duration_ms`. Prompts, ticket bodies, answers and drafts are never logged. The live API writes to the ignored `var/traces.jsonl` and `var/assistant.sqlite3`.
 
-## Boundaries and guarantees
+## Safety model
 
-**Identity:** JSON tenant/user/session fields simulate trusted application claims on localhost. This is not production authentication: someone who can supply arbitrary context can impersonate an operator. Production must derive claims from authentication, authorize ticket access in both backend and MCP service, and restrict direct access to the fixture-style write API. Within the demo assumption, routing, memory, documents, proposals, diagnostics and approval all enforce the same tenant/user scope. Tenant names or foreign ticket IDs in prose are declined before tool access.
+- **Identity.** The JSON context fields stand in for authenticated claims on localhost. **This is not authentication**: anyone who can call the API can claim any operator. Within that assumption, every read and write is scoped to the tenant, and memory and actions are also scoped to the user. Prose that names another tenant or a foreign ticket ID is declined before any tool call. MCP calls always pass the trusted `tenant_id`, and the MCP result is checked against schema and identity.
+- **Grounding.** Documents are filtered by tenant or global scope, `active` status and effective date. Then they are ranked lexically by topic. A bounded parser extracts the refund window and conditions. Conflicting or unsupported policy language yields `insufficient_evidence`. No answer or draft promises a refund. The hostile `N-OPS-NOTE-2026` is retrieved as data but never cited, and it cannot call tools, store memory or approve anything.
+- **Memory.** One SQLite row per tenant, user and dimension (length, format, introductions) stores the value, source session and timestamps. Only exact first-person durable statements are stored. Quoted, temporary, compound or negated text is not. A correction overwrites only its own dimension. Forgetting deletes rows, and there is no cache or transcript fallback. This is application-level deletion, not secure erasure.
+- **Actions.** A proposal stores the exact body, SHA-256, ticket version, owner and a stable idempotency key. SQLite triggers make it immutable. Approval requires the owner and the exact hash. The TTL and the current ticket version (via MCP) are checked first, then consent and `SENDING` are committed in one transaction before the POST. A stale version or HTTP 409 means `CONFLICT`, which needs a new draft. An unclear result is settled by looking up the **same** key. If it is not found, the same body is retried once with the same key. If the outcome is still unclear, the action stays `UNKNOWN`. Reconciliation is read-only, and a restart never republishes on its own. This gives durable consent and stable-key deduplication, **not a formal exactly-once guarantee**.
 
-**Grounding:** Metadata filters first enforce tenant/global scope, active status and effective dates. Recognized policy titles establish authority; lexical overlap ranks topical relevance, with tenant specificity and recency applied separately. Conflicting active refund constraints or equal-date policy text cause escalation. The bounded parser extracts the fixture's refund window/usage and billing checks; unsupported language is insufficient evidence. Only selected source IDs used for claims become citations. The hostile active note is encountered but cannot issue tools, store memory or consent. Calendar-day subtraction uses the injected clock; missing prior credits always prevents a refund confirmation.
+## Model adapter
 
-**Memory:** One SQLite row per tenant/user/dimension stores value, source session and creation/update timestamps. Length and format coexist. The bounded grammar recognizes `I prefer ...` or supported style commands ending in `from now on`; quoted, temporary and unsupported prose is not persisted. Corrections such as `I prefer detailed replies, not concise replies` use the positive replacement clause. Forget deletes scoped rows; there is no preference cache, transcript retrieval or stored-summary fallback. This is application-level forgetting, not forensic secure erasure of SQLite storage. Action records and ID-only traces follow a separate audit-retention concern.
+The shipped `DeterministicAdapter` turns verified evidence and stored style into text. I chose it because the assignment allows it and it makes every contract test reproducible. It cannot hold an open conversation, and requests outside its bounded English grammar get a clarification. A production LLM would implement the same `ModelAdapter.render` interface. It would receive only verified evidence and scoped style, and its output would be checked again (no new claims, citations limited to the selected IDs, no refund promise). Tool choice, tenant scope, memory writes and approval stay in code, so a prompt-injected or wrong model output cannot cause a side effect. The tests here are contract and safety checks. They do not measure generative answer quality, which would need a separate pinned-input quality evaluation.
 
-**Actions:** An immutable proposal stores exact body, SHA-256, ticket version, owner and stable idempotency key. A separate hash-bound approval is stored transactionally, with a server-generated reference, before preflight MCP version validation and SENDING. Conditional SQLite updates and a unique approval record serialize concurrent approvals. Stale or 409-conflicted actions require a new draft and new approval. HTTP writes and read-only MCP/document clients are separate capabilities; the adapter has neither.
+## Limitations
 
-On an ambiguous write result, action status is queried by the original key before retrying. Confirmed commit is recorded without a second publish. A not-found lookup permits a retry with the same body/key, up to two total attempts. Exhausted ambiguous attempts or unavailable verification remain UNKNOWN: a timed-out POST may still commit after a 404 lookup. `/reconcile` is owner-scoped and read-only, including after restart; an absent result there also remains UNKNOWN. Repeated approval cannot resend pending or committed actions. This provides durable consent, stable-key deduplication and reconciliation; **it is not a formal exactly-once guarantee**. Inspect the returned action `status` even when HTTP is 200; CONFLICT/UNKNOWN/FAILED are explicit outcomes.
-
-## Deliberate limitations and evolution
-
-The shipped `ModelAdapter` is a working deterministic renderer, not a general conversational LLM. English intent/preference and policy parsing are bounded; unsupported requests clarify or escalate. Contract/safety tests do not measure generative answer quality. A future live adapter would receive only verified evidence and scoped style; it would never receive routing, approval or publishing authority, and would need a separate probabilistic quality evaluation. No provider SDK, API key or live quality numbers are included.
-
-This is a single-host demo with per-read MCP startup, short synchronous SQLite transactions, one API worker, no automatic retry worker for UNKNOWN state, and no production OAuth, UI or cloud deployment. Prioritize authenticated scope and service authorization, then retention/encryption and lease-based reconciliation before real customer use. The one-page decision log records trade-offs and AI-assistance validation.
-
+Single host, one API worker, local trusted context, no production OAuth or service-side ticket authorization, no background worker for `UNKNOWN` actions (an operator reconciles or re-approves), English-only bounded grammars, and no UI. See `../DECISIONS.md` for the reasoning and the first production improvement.

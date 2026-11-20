@@ -1,0 +1,9 @@
+# The supplied fixture files are verified byte for byte against artifacts/fixture_manifest.json.
+# Never convert their line endings on checkout (e.g. core.autocrlf=true on Windows).
+/server.py -text
+/mcp_server.py -text
+/fixtures.json -text
+/eval_scenarios.json -text
+/test_mock_api.py -text
+/README.md -text
+/START_HERE.txt -text
