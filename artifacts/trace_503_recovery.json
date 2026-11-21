@@ -1,9 +1,9 @@
 {
-  "trace_id": "94b7588c-591b-4cd5-a7d9-c8a4f349d089",
+  "trace_id": "77b6bd6e-ee16-4b7b-b424-75098e4b1543",
   "tenant_id": "northstar",
   "user_id": "reviewer-01",
   "session_id": "eval",
-  "started_at": "2026-11-20T18:04:08.190626+00:00",
+  "started_at": "2026-11-21T11:46:28.868953+00:00",
   "intent": "approve",
   "model_adapter": "deterministic",
   "outcome": "ok",
@@ -14,20 +14,20 @@
     "http:get_action_status"
   ],
   "action": {
-    "action_id": "5e76b839-6d9a-4149-a0f8-5650b7ecfc8e",
+    "action_id": "263a6a76-56e0-49f8-a6c6-92735eee9684",
     "status": "COMMITTED"
   },
   "error": null,
-  "duration_ms": 36.808,
+  "duration_ms": 10.299,
   "events": [
     {
       "stage": "mcp.attempt",
-      "elapsed_ms": 0.252,
+      "elapsed_ms": 0.203,
       "attempt": 1
     },
     {
       "stage": "mcp.tools/call",
-      "elapsed_ms": 0.273,
+      "elapsed_ms": 0.225,
       "transport": "stdio",
       "tool": "get_ticket",
       "ticket_id": "NS-104",
@@ -35,45 +35,45 @@
     },
     {
       "stage": "mcp.validated",
-      "elapsed_ms": 29.201,
+      "elapsed_ms": 3.763,
       "ticket_id": "NS-104",
       "version": 1
     },
     {
       "stage": "action.transition",
-      "elapsed_ms": 30.265,
-      "action_id": "5e76b839-6d9a-4149-a0f8-5650b7ecfc8e",
+      "elapsed_ms": 4.63,
+      "action_id": "263a6a76-56e0-49f8-a6c6-92735eee9684",
       "previous": "PROPOSED",
       "status": "SENDING",
-      "approval_reference": "approval-a6b535753dcb435ab4b19dc51dbfdc6b",
+      "approval_reference": "approval-7586666aff564316bd3d47909db26634",
       "attempt": 1
     },
     {
       "stage": "http.publish",
-      "elapsed_ms": 33.414,
+      "elapsed_ms": 7.232,
       "status": 503,
-      "idempotency_key": "cp-747369b4328c415d8258f1770378306a"
+      "idempotency_key": "cp-00bab07d9d8946eda149e31c1ef3303a"
     },
     {
       "stage": "http.read",
-      "elapsed_ms": 35.758,
+      "elapsed_ms": 9.331,
       "resource": "action_status",
       "status": 200,
       "attempt": 1
     },
     {
       "stage": "action.transition",
-      "elapsed_ms": 36.748,
-      "action_id": "5e76b839-6d9a-4149-a0f8-5650b7ecfc8e",
+      "elapsed_ms": 10.243,
+      "action_id": "263a6a76-56e0-49f8-a6c6-92735eee9684",
       "previous": "SENDING",
       "status": "COMMITTED",
       "error_code": null
     },
     {
       "stage": "action.reconcile",
-      "elapsed_ms": 36.755,
-      "action_id": "5e76b839-6d9a-4149-a0f8-5650b7ecfc8e",
-      "idempotency_key": "cp-747369b4328c415d8258f1770378306a",
+      "elapsed_ms": 10.25,
+      "action_id": "263a6a76-56e0-49f8-a6c6-92735eee9684",
+      "idempotency_key": "cp-00bab07d9d8946eda149e31c1ef3303a",
       "outcome": "committed"
     }
   ]

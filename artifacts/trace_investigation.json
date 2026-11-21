@@ -1,9 +1,9 @@
 {
-  "trace_id": "97c53437-c198-4827-b244-281d28688d6e",
+  "trace_id": "838483b8-909f-41db-b446-b5a1d0603c92",
   "tenant_id": "northstar",
   "user_id": "reviewer-01",
   "session_id": "eval",
-  "started_at": "2026-11-20T18:03:43.698383+00:00",
+  "started_at": "2026-11-21T11:46:12.646636+00:00",
   "intent": "investigate",
   "model_adapter": "deterministic",
   "outcome": "ok",
@@ -17,26 +17,26 @@
   ],
   "action": null,
   "error": null,
-  "duration_ms": 1228.472,
+  "duration_ms": 854.98,
   "events": [
     {
       "stage": "intent",
-      "elapsed_ms": 1.317,
+      "elapsed_ms": 1.303,
       "name": "investigate"
     },
     {
       "stage": "mcp.attempt",
-      "elapsed_ms": 1.663,
+      "elapsed_ms": 1.397,
       "attempt": 1
     },
     {
       "stage": "mcp.initialize",
-      "elapsed_ms": 1158.158,
+      "elapsed_ms": 781.96,
       "transport": "stdio"
     },
     {
       "stage": "mcp.tools/call",
-      "elapsed_ms": 1158.166,
+      "elapsed_ms": 781.969,
       "transport": "stdio",
       "tool": "get_ticket",
       "ticket_id": "NS-104",
@@ -44,20 +44,20 @@
     },
     {
       "stage": "mcp.validated",
-      "elapsed_ms": 1170.608,
+      "elapsed_ms": 805.716,
       "ticket_id": "NS-104",
       "version": 1
     },
     {
       "stage": "http.read",
-      "elapsed_ms": 1227.439,
+      "elapsed_ms": 854.084,
       "resource": "documents",
       "status": 200,
       "attempt": 1
     },
     {
       "stage": "retrieval.select",
-      "elapsed_ms": 1228.21,
+      "elapsed_ms": 854.733,
       "encountered_ids": [
         "GLOBAL-001",
         "N-POL-REFUND-2024",
@@ -90,12 +90,12 @@
     },
     {
       "stage": "memory.read",
-      "elapsed_ms": 1228.408,
+      "elapsed_ms": 854.925,
       "keys": []
     },
     {
       "stage": "model.render",
-      "elapsed_ms": 1228.431,
+      "elapsed_ms": 854.945,
       "mode": "deterministic",
       "assessment": "verification_required"
     }
