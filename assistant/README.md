@@ -121,7 +121,27 @@ Each trace has `trace_id`, tenant/user/session IDs, intent, tool names, selected
 
 ## Model adapter
 
-The shipped `DeterministicAdapter` turns verified evidence and stored style into text. I chose it because the assignment allows it and it makes every contract test reproducible. It cannot hold an open conversation, and requests outside its bounded English grammar get a clarification. A production LLM would implement the same `ModelAdapter.render` interface. It would receive only verified evidence and scoped style, and its output would be checked again (no new claims, citations limited to the selected IDs, no refund promise). Tool choice, tenant scope, memory writes and approval stay in code, so a prompt-injected or wrong model output cannot cause a side effect. The tests here are contract and safety checks. They do not measure generative answer quality, which would need a separate pinned-input quality evaluation.
+Deterministic generation is the default and requires no credentials. For live mode, store `AVALAI_API_KEY` in your Git-ignored `.env` file. Run the synthetic backend as shown above, then start the API in a second PowerShell window with Uvicorn loading that file into its environment.
+
+```powershell
+$env:CONTEXTPILOT_MODEL_MODE = 'avalai'
+$env:CONTEXTPILOT_TODAY = '2026-11-16'  # Optional fixture date
+.\.venv\Scripts\python.exe -m uvicorn assistant.api:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log --env-file .env
+```
+
+The adapter calls the fixed `https://api.avalai.ir/v1/chat/completions` endpoint with `deepseek-v4.1-flash` using async HTTP. It sends structured evidence, approved passages, and the current user's scoped writing preferences to AvalAI. The provider can arrange those passages and choose approved framing. The app validates every returned passage before delivering the response or storing a proposal. Claim accuracy still depends on the upstream evidence and policy parser. Live responses use a bounded English format.
+
+`/health` reports the configured adapter. A successful `model.render` trace event records the provider, requested model, latency, HTTP status, attempts, and usage when AvalAI supplies it. Transient errors get one retry. Provider failures or rejected output return a sanitized error and stop before proposal creation.
+
+The live tests make a short paid smoke request and exercise the real local API and MCP against the synthetic backend. The command below loads `.env` into the test process.
+
+```powershell
+$env:CONTEXTPILOT_LIVE_TESTS = '1'
+.\.venv\Scripts\python.exe -m dotenv --file .env run --no-override -- .\.venv\Scripts\python.exe -m pytest -q -s tests/test_avalai_live.py
+Remove-Item Env:CONTEXTPILOT_LIVE_TESTS
+```
+
+To return to offline generation, set `$env:CONTEXTPILOT_MODEL_MODE = 'deterministic'` and restart the API with the original startup command above.
 
 ## Limitations
 

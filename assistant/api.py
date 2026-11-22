@@ -41,6 +41,7 @@ def create_app(settings: Settings | None = None, *, demo_failures: tuple[str, ..
 
     async def execute(context: Context, intent: str, operation):
         trace = Trace(settings.trace_path, context, intent)
+        trace.model_adapter = orchestrator.model_mode
         try:
             result = operation(trace)
             if inspect.isawaitable(result):
@@ -60,13 +61,14 @@ def create_app(settings: Settings | None = None, *, demo_failures: tuple[str, ..
     async def validation_error(request: Request, exc: RequestValidationError):
         # Do not echo/log invalid request bodies, secrets, or spoofed identity fields.
         trace = Trace(settings.trace_path, None, "validation")
+        trace.model_adapter = orchestrator.model_mode
         trace.event("error", code="invalid_request")
         trace.finish("error")
         return JSONResponse(status_code=422, content={"error": "invalid_request", "trace_id": trace.trace_id})
 
     @app.get("/health")
     async def health():
-        return {"status": "ok", "service": "contextpilot-assistant", "model_adapter": "deterministic"}
+        return {"status": "ok", "service": "contextpilot-assistant", "model_adapter": orchestrator.model_mode}
 
     def trusted_query(tenant_id: Annotated[Tenant, Query()],
                       actor_user_id: Annotated[Identifier, Query(alias="user_id")],

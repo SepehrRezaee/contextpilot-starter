@@ -27,6 +27,8 @@ class Settings:
     # A draft states date-dependent facts; it must be approved while they are still fresh.
     proposal_ttl_hours: float = 24.0
     today: Callable[[], date] = field(default=utc_date, repr=False)
+    model_mode: str = "deterministic"
+    avalai_api_key: str = field(default="", repr=False, compare=False)
 
     def __post_init__(self):
         url = urlsplit(self.backend_url)
@@ -36,6 +38,10 @@ class Settings:
             raise ValueError("attempts must be bounded to one or two")
         if self.mcp_timeout <= 0 or self.http_timeout <= 0 or self.proposal_ttl_hours <= 0:
             raise ValueError("timeouts must be positive")
+        if self.model_mode not in ("deterministic", "avalai"):
+            raise ValueError("CONTEXTPILOT_MODEL_MODE must be deterministic or avalai")
+        if self.model_mode == "avalai" and not self.avalai_api_key.strip():
+            raise ValueError("AVALAI_API_KEY is required when CONTEXTPILOT_MODEL_MODE=avalai")
         object.__setattr__(self, "backend_url", self.backend_url.rstrip("/"))
         object.__setattr__(self, "database", Path(self.database).resolve())
         object.__setattr__(self, "mcp_server", Path(self.mcp_server).resolve())
@@ -45,11 +51,14 @@ class Settings:
         def local_path(name, default):
             path = Path(os.environ.get(name, default))
             return path if path.is_absolute() else ROOT / path
+        mode = os.environ.get("CONTEXTPILOT_MODEL_MODE", "deterministic").strip()
         settings = dict(
             backend_url=os.environ.get("CONTEXTPILOT_API_URL", "http://127.0.0.1:8765"),
             database=local_path("CONTEXTPILOT_DB", "var/assistant.sqlite3"),
             trace_path=local_path("CONTEXTPILOT_TRACE", "var/traces.jsonl"),
             mcp_server=local_path("CONTEXTPILOT_MCP_SERVER", "mcp_server.py"),
+            model_mode=mode,
+            avalai_api_key=os.environ.get("AVALAI_API_KEY", "").strip() if mode == "avalai" else "",
         )
         # Demo/evaluation only: pin the policy clock (YYYY-MM-DD) so date-dependent
         # answers are reproducible. An invalid value fails at startup, not mid-request.

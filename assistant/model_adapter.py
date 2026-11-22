@@ -1,8 +1,15 @@
 """Render verified evidence only. This boundary grants no tool/state capability."""
+import json
+import time
+from dataclasses import replace
 from typing import Protocol
+
+import anyio
+import httpx
 
 from .errors import AssistantError
 from .retrieval import Evidence
+from .tracing import Trace
 
 _OPERATOR_OUTCOME = {
     "insufficient_evidence": "Current evidence is insufficient or conflicting. Please verify the missing records or escalate; a refund cannot be confirmed.",
@@ -81,3 +88,129 @@ class DeterministicAdapter:
         if not concise:
             paragraphs.append("Thank you for your patience.")
         return paragraphs
+
+
+class AvalAIAdapter:
+    mode = "avalai"
+    model = "deepseek-v4.1-flash"
+    endpoint = "https://api.avalai.ir/v1/chat/completions"
+
+    def __init__(self, api_key: str, *, transport: httpx.AsyncBaseTransport | None = None):
+        self._api_key = api_key
+        self._transport = transport
+
+    async def render(self, evidence: Evidence, preferences: dict[str, str], *,
+                     draft: bool = False, trace: Trace | None = None) -> str:
+        concise = preferences.get("length") == "concise"
+        if draft:
+            # Customer wording can include the effect of cancellation, but not
+            # the internal approval procedure appended to the verified claim.
+            claims = [{"topic": claim["topic"],
+                       "text": claim["text"].removesuffix(" Subscription changes require explicit approval.")}
+                      for claim in evidence.claims if claim["topic"] in _CUSTOMER_TOPICS]
+            evidence = replace(evidence, claims=claims)
+            required = DeterministicAdapter._customer(evidence, preferences, True)
+            openings = ([] if concise or preferences.get("introductions") == "omit"
+                        else ["Thank you for contacting support.", "Thank you for reaching out about your request."])
+            closings = [] if concise else ["Thank you for your patience.", "We appreciate your patience during the review."]
+        else:
+            required = DeterministicAdapter._operator(evidence, concise)
+            openings = [] if concise else ["Here is what the verified records show.", "Here is a summary of the available evidence."]
+            closings = []
+        facts = evidence.public()
+        del facts["ticket_version"]
+        data = {"audience": "customer" if draft else "operator", "evidence": facts, "preferences": preferences,
+                "required_passages": required, "optional_openings": openings, "optional_closings": closings}
+        messages = [
+            {"role": "system", "content": (
+                "Compose an English support response from the JSON data. Use every required_passage exactly "
+                "once, verbatim, on its own line. Arrange the passages in a readable order for the audience. "
+                "You may include one optional_opening first and one optional_closing last, also verbatim. "
+                "Use '- ' before every nonblank line only if preferences.format is bullets. "
+                "Return the response only, without any other text, headings, markup, or claims."
+            )},
+            {"role": "user", "content": json.dumps(data)},
+        ]
+        metadata = {"mode": self.mode, "provider": self.mode, "model": self.model,
+                    "assessment": evidence.assessment}
+        started = time.perf_counter()
+        if trace is not None:
+            trace.model_adapter = self.mode
+        try:
+            answer = await self._complete(messages, max_tokens=600, metadata=metadata)
+            lines = [line for line in answer.split("\n") if line.strip()]
+            if preferences.get("format") == "bullets":
+                if any(not line.startswith("- ") for line in lines):
+                    raise AssistantError("avalai_unsafe_output")
+                lines = [line[2:] for line in lines]
+            if lines and lines[0] in openings:
+                lines.pop(0)
+            if lines and lines[-1] in closings:
+                lines.pop()
+            if len(answer) > 2000 or sorted(lines) != sorted(required):
+                raise AssistantError("avalai_unsafe_output")
+            return answer
+        except AssistantError as exc:
+            metadata["error_code"] = exc.code
+            raise
+        finally:
+            if trace is not None:
+                trace.event("model.render", latency_ms=round((time.perf_counter() - started) * 1000, 3), **metadata)
+
+    async def _complete(self, messages: list[dict], *, max_tokens: int, metadata: dict) -> str:
+        payload = {"model": self.model, "messages": messages, "max_tokens": max_tokens,
+                   "stream": False, "thinking": {"type": "disabled"}}
+        headers = {"Authorization": f"Bearer {self._api_key}"}
+        async with httpx.AsyncClient(transport=self._transport, trust_env=False, follow_redirects=False,
+                                     timeout=httpx.Timeout(15.0, connect=5.0)) as client:
+            for attempt in (1, 2):
+                metadata["attempts"] = attempt
+                try:
+                    with anyio.fail_after(16):
+                        response = await client.post(self.endpoint, headers=headers, json=payload)
+                except (TimeoutError, httpx.TimeoutException):
+                    metadata["request_status"] = "timeout"
+                    error = AssistantError("avalai_timeout", 504)
+                except (httpx.NetworkError, httpx.RemoteProtocolError):
+                    metadata["request_status"] = "network_error"
+                    error = AssistantError("avalai_unavailable", 503)
+                except (httpx.HTTPError, UnicodeError):
+                    metadata["request_status"] = "request_error"
+                    raise AssistantError("avalai_request_rejected") from None
+                else:
+                    status = metadata["request_status"] = response.status_code
+                    if response.is_success:
+                        return self._parse(response, metadata)
+                    if status in (401, 403):
+                        raise AssistantError("avalai_authentication_failed")
+                    if status == 429:
+                        error = AssistantError("avalai_rate_limited", 503)
+                    elif status in (408, 500, 502, 503, 504):
+                        error = AssistantError("avalai_unavailable", 503)
+                    else:
+                        raise AssistantError("avalai_request_rejected")
+                if attempt == 1:
+                    await anyio.sleep(0.25)
+            raise error
+
+    @staticmethod
+    def _parse(response: httpx.Response, metadata: dict) -> str:
+        try:
+            payload = response.json()
+            usage = payload.get("usage") if isinstance(payload, dict) else None
+            if isinstance(usage, dict):
+                counts = {key: usage[key] for key in ("prompt_tokens", "completion_tokens", "total_tokens")
+                          if type(usage.get(key)) is int and usage[key] >= 0}
+                if counts:
+                    metadata["usage"] = counts
+            choice = payload["choices"][0]
+            reason = choice.get("finish_reason") if isinstance(choice, dict) else None
+            metadata["finish_reason"] = reason if reason in ("stop", "length", "content_filter", "tool_calls") else "other"
+            message = choice["message"]
+            content = message["content"]
+            if (reason != "stop" or message.get("tool_calls")
+                    or message.get("function_call") or not isinstance(content, str) or not content.strip()):
+                raise ValueError
+        except (ValueError, TypeError, KeyError, IndexError):
+            raise AssistantError("avalai_invalid_response") from None
+        return content.strip().replace("\r\n", "\n")

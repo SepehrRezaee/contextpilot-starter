@@ -6,7 +6,7 @@ from .backend_client import BackendReader, CommentPublisher, HttpPool
 from .config import Settings
 from .memory import ALL_KEYS, extract_preferences, parse_forget
 from .mcp_client import TicketMCP
-from .model_adapter import DeterministicAdapter, ModelAdapter
+from .model_adapter import AvalAIAdapter, DeterministicAdapter, ModelAdapter
 from .retrieval import assess, select_documents
 from .schemas import TENANTS, Context, RespondRequest, validate_ticket_scope
 from .storage import Store
@@ -14,13 +14,17 @@ from .tracing import Trace
 
 
 class Orchestrator:
-    def __init__(self, settings: Settings, *, adapter: ModelAdapter | None = None, demo_failures: tuple[str, ...] = ()):
+    def __init__(self, settings: Settings, *, adapter: ModelAdapter | AvalAIAdapter | None = None,
+                 demo_failures: tuple[str, ...] = ()):
         self.settings = settings
         self.store = Store(settings.database)
         self._http = HttpPool(settings)
         self.mcp = TicketMCP(settings)
         self.reader = BackendReader(settings, http=self._http)
-        self.adapter = adapter or DeterministicAdapter()
+        if adapter is None:
+            adapter = AvalAIAdapter(settings.avalai_api_key) if settings.model_mode == "avalai" else DeterministicAdapter()
+        self.adapter = adapter
+        self.model_mode = getattr(adapter, "mode", "custom")
         self.actions = Actions(settings, self.store, mcp=self.mcp, reader=self.reader,
                                publisher=CommentPublisher(settings, demo_failures=demo_failures, http=self._http))
 
@@ -96,8 +100,11 @@ class Orchestrator:
         preferences = self.store.preferences(context)
         style = {p["key"]: p["value"] for p in preferences}
         trace.event("memory.read", keys=sorted(style))
-        answer = self.adapter.render(evidence, style, draft=draft)
-        trace.event("model.render", mode="deterministic", assessment=evidence.assessment)
+        if isinstance(self.adapter, AvalAIAdapter):
+            answer = await self.adapter.render(evidence, style, draft=draft, trace=trace)
+        else:
+            answer = self.adapter.render(evidence, style, draft=draft)
+            trace.event("model.render", mode=self.model_mode, assessment=evidence.assessment)
         result.update(answer=answer, citations=evidence.citations, intent=intent,
                       preferences=preferences, evidence=evidence.public())
         if draft:
