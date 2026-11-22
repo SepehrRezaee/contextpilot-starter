@@ -1,6 +1,6 @@
 # ContextPilot: candidate solution
 
-ContextPilot is a local JSON API for support operators. It investigates a ticket through the **supplied stdio MCP server**, grounds refund answers in the tenant's current policy with document-ID citations, remembers explicit writing preferences across sessions and restarts, and drafts customer replies. A draft is published only after a **separate approval request bound to the exact stored body hash**. It runs offline and needs no model key.
+ContextPilot is a local JSON API for support operators. It investigates a ticket through the **supplied stdio MCP server**, grounds refund answers in the tenant's current policy with document-ID citations, remembers explicit writing preferences across sessions and restarts, and drafts customer replies. A draft is published only after a **separate approval request bound to the exact stored body hash**. The default deterministic mode runs offline. [Live mode](#model-adapter) uses AvalAI `deepseek-v4.1-flash` to compose answers and drafts.
 
 ## What is supplied and what is mine
 
@@ -19,7 +19,7 @@ ContextPilot is a local JSON API for support operators. It investigates a ticket
 | `retrieval.py` | Metadata filtering, lexical ranking, bounded policy parsing, evidence assessment |
 | `memory.py`, `storage.py` | Strict preference/forget grammars; SQLite preferences and action ledger |
 | `actions.py` | Immutable proposals, hash-bound approval, idempotent publish and reconciliation |
-| `model_adapter.py` | `ModelAdapter` interface and the shipped deterministic renderer |
+| `model_adapter.py` | `ModelAdapter` interface, deterministic renderer, and async AvalAI renderer with output validation |
 | `tracing.py`, `eval_runner.py` | Redacted JSONL traces; E01–E08 evaluator |
 
 ## Setup
@@ -39,12 +39,13 @@ On macOS/Linux, use `.venv/bin/python` instead of `.\.venv\Scripts\python.exe`.
 # Terminal 1: the supplied backend
 .\.venv\Scripts\python.exe server.py --port 8765
 
-# Terminal 2: the assistant (the date pin is optional; it reproduces the evaluation answers)
+# Terminal 2: deterministic mode with the optional evaluation date pin
+$env:CONTEXTPILOT_MODEL_MODE = 'deterministic'
 $env:CONTEXTPILOT_TODAY = '2026-11-16'
 .\.venv\Scripts\python.exe -m uvicorn assistant.api:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-The assistant starts `mcp_server.py` with the same interpreter, initializes one stdio session and reuses it for every `get_ticket` call. There is no HTTP fallback for ticket reads. The variables in `.env.example` are read from the environment; the file itself is not loaded. When `CONTEXTPILOT_TODAY` is unset, policy dates use the current UTC date. Interactive schemas are at `http://127.0.0.1:8000/docs`.
+The assistant starts `mcp_server.py` with the same interpreter, initializes one stdio session and reuses it for every `get_ticket` call. `.env.example` documents the environment variables. The [live startup command](#model-adapter) loads settings from `.env` into the process environment. When `CONTEXTPILOT_TODAY` is unset, policy dates use the current UTC date. Interactive schemas are at `http://127.0.0.1:8000/docs`.
 
 Quick check without PowerShell:
 
@@ -96,12 +97,12 @@ Saying `Forget my writing preferences.` also deletes everything, and `Forget my 
 
 ```powershell
 .\.venv\Scripts\python.exe -m unittest -v test_mock_api.py   # supplied backend smoke tests
-.\.venv\Scripts\python.exe -m pytest -q                      # all candidate tests + supplied smoke tests + E01-E08
+.\.venv\Scripts\python.exe -m pytest -q                      # offline suite, including supplied smoke tests and E01-E08
 .\.venv\Scripts\python.exe -m assistant.eval_runner          # E01-E08 only; rewrites artifacts/
 .\.venv\Scripts\python.exe -m pytest tests/test_actions.py -v  # approval, 503 before/after commit, 409, restart recovery
 ```
 
-The tests use real processes: a fixture HTTP server on a free port, the SDK stdio MCP server, and subprocess restarts. Nothing in the assistant path is mocked, except where a test injects a specific failure (an unavailable status reader, a crash after the POST, a racing writer, a timed-out write that commits later). The evaluator loads the supplied `eval_scenarios.json`. For each scenario it starts an isolated API process with its own database, resets the fixture, and checks independent state as well as the response: backend comment counts, SQLite rows, trace events and process restarts. E06 uses a bootstrap-only failure injector (503 after commit) that the normal API does not expose. The evaluator and the date-dependent tests pin the policy clock to **2026-11-16**, so results do not depend on the real date. `tests/test_pytest_portability.py` guards a Windows multi-account issue: each pytest run gets a fresh ignored `tmp/pytest-run-*` directory, and the cache provider is disabled.
+The offline suite uses a real fixture HTTP server, the SDK stdio MCP server, and subprocess restarts. Adapter tests use mocked AvalAI HTTP responses. The evaluator loads the supplied `eval_scenarios.json` and uses deterministic rendering. For each scenario it starts an isolated API process with its own database, resets the fixture, and checks backend comment counts, SQLite rows, trace events and process restarts. E06 injects an after-commit HTTP 503 through the test bootstrap. The evaluator and date-dependent tests pin the policy clock to **2026-11-16**. Each pytest run gets a fresh ignored `tmp/pytest-run-*` directory and runs with the cache provider disabled to avoid Windows multi-account permission errors.
 
 ## Evidence in `artifacts/` (regenerated by the evaluator)
 
@@ -110,7 +111,7 @@ The tests use real processes: a fixture HTTP server on a free port, the SDK stdi
 - `trace_investigation.json`: sample trace of a ticket investigation (MCP initialize and `get_ticket`, document reads, selected IDs, latency).
 - `trace_503_recovery.json`: sample trace of approval → `SENDING` → HTTP 503 → reconciliation by the same idempotency key → `COMMITTED`.
 
-Each trace has `trace_id`, tenant/user/session IDs, intent, tool names, selected document IDs, action ID and state transitions, error codes, per-stage `elapsed_ms` and `duration_ms`. Prompts, ticket bodies, answers and drafts are never logged. The live API writes to the ignored `var/traces.jsonl` and `var/assistant.sqlite3`.
+The evaluator generates these artifacts in deterministic mode. Each trace has `trace_id`, tenant/user/session IDs, intent, tool names, selected document IDs, action ID and state transitions, error codes, per-stage `elapsed_ms` and `duration_ms`. API processes write redacted traces and local state to `var/traces.jsonl` and `var/assistant.sqlite3` by default.
 
 ## Safety model
 
@@ -129,11 +130,11 @@ $env:CONTEXTPILOT_TODAY = '2026-11-16'  # Optional fixture date
 .\.venv\Scripts\python.exe -m uvicorn assistant.api:create_app --factory --host 127.0.0.1 --port 8000 --no-access-log --env-file .env
 ```
 
-The adapter calls the fixed `https://api.avalai.ir/v1/chat/completions` endpoint with `deepseek-v4.1-flash` using async HTTP. It sends structured evidence, approved passages, and the current user's scoped writing preferences to AvalAI. The provider can arrange those passages and choose approved framing. The app validates every returned passage before delivering the response or storing a proposal. Claim accuracy still depends on the upstream evidence and policy parser. Live responses use a bounded English format.
+The adapter calls `https://api.avalai.ir/v1/chat/completions` with `deepseek-v4.1-flash` using async HTTPX and non-thinking mode. It sends structured evidence, approved passages, and the current user's scoped writing preferences to AvalAI. The provider can arrange those passages and choose approved framing. The app validates every returned passage before delivering the response or storing a proposal. Claim accuracy still depends on the upstream evidence and policy parser. Live responses use a bounded English format.
 
 `/health` reports the configured adapter. A successful `model.render` trace event records the provider, requested model, latency, HTTP status, attempts, and usage when AvalAI supplies it. Transient errors get one retry. Provider failures or rejected output return a sanitized error and stop before proposal creation.
 
-The live tests make a short paid smoke request and exercise the real local API and MCP against the synthetic backend. The command below loads `.env` into the test process.
+The opt-in live tests make a short paid smoke request and exercise the local API and MCP against the synthetic backend. They check citations, cross-session preferences, the proposal hash, tenant isolation, duplicate approval, and recovery from a synthetic after-commit HTTP 503. The command below loads `.env` into the test process.
 
 ```powershell
 $env:CONTEXTPILOT_LIVE_TESTS = '1'

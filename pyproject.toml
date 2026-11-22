@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "contextpilot-assistant"
 version = "0.1.0"
-description = "Offline, MCP-backed support assistant with explicit approval"
+description = "MCP-backed support assistant with optional AvalAI generation and explicit approval"
 requires-python = ">=3.11"
 dependencies = [
   "mcp==1.26.0",
